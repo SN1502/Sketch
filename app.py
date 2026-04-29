@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import time
 
-st.set_page_config(page_title="Live Tracing Sketch", layout="centered")
+st.set_page_config(page_title="Live Pencil Tracing", layout="centered")
 
 st.title("✍️ Live Pencil Tracing")
 
@@ -61,25 +61,25 @@ if uploaded_file:
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # -------- CLEAN EDGE DETECTION --------
-        edges = cv2.Canny(gray, 120, 220)
+        # -------- BETTER EDGE DETECTION --------
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blur, 50, 120)
 
-        # Find contours (paths)
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        # Improve edge clarity
+        edges = cv2.dilate(edges, None)
+        edges = cv2.erode(edges, None)
 
-        # Sort large contours first
+        # Get contours
+        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         contours = sorted(contours, key=lambda x: len(x), reverse=True)
 
         canvas = np.ones_like(gray) * 255
 
         pencil = load_pencil()
-
         if pencil is None:
             st.warning("⚠️ pencil.png not found → drawing without pencil animation")
 
         frame = st.empty()
-
-        speed = st.slider("Speed", 1, 20, 29)
 
         st.subheader("🎬 Tracing...")
 
@@ -91,24 +91,22 @@ if uploaded_file:
                 x1, y1 = pts[i - 1]
                 x2, y2 = pts[i]
 
-                # Smooth interpolation
-                steps = 5
+                # Smooth movement
+                steps = 8
 
                 for t in range(steps):
                     xi = int(x1 + (x2 - x1) * t / steps)
                     yi = int(y1 + (y2 - y1) * t / steps)
 
-                    # draw black tracing line
                     cv2.circle(canvas, (xi, yi), 1, 0, -1)
 
                     display = cv2.cvtColor(canvas.copy(), cv2.COLOR_GRAY2BGR)
-
-                    # move pencil
                     display = overlay_pencil(display, pencil, xi, yi)
 
                     frame.image(display, channels="BGR")
 
-                    time.sleep(0.001 * speed)
+                    # Very small delay → smoother feel
+                    time.sleep(0.0005)
 
         frame.image(canvas, clamp=True)
         st.success("✅ Tracing Completed!")
