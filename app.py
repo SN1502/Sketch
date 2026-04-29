@@ -5,46 +5,25 @@ import time
 
 st.set_page_config(page_title="Live Pencil Tracing", layout="centered")
 
-st.title("✍️ Live Pencil Tracing")
+st.title("✍️ Live Pencil Tracing (No Image)")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
 
 
-# -------- Load pencil image --------
-@st.cache_resource
-def load_pencil():
-    pencil = cv2.imread("pencil.png", cv2.IMREAD_UNCHANGED)
-    if pencil is None:
-        return None
-    return cv2.resize(pencil, (40, 40))
-
-
-# -------- Overlay pencil --------
-def overlay_pencil(background, pencil, x, y):
-    if pencil is None:
-        return background
-
-    h, w = pencil.shape[:2]
-
-    y1 = max(0, y - h//2)
-    y2 = min(background.shape[0], y1 + h)
-    x1 = max(0, x - w//2)
-    x2 = min(background.shape[1], x1 + w)
-
-    pencil_crop = pencil[0:(y2-y1), 0:(x2-x1)]
-
-    if pencil_crop.shape[2] == 4:
-        alpha = pencil_crop[:, :, 3] / 255.0
-    else:
-        alpha = np.ones((pencil_crop.shape[0], pencil_crop.shape[1]))
-
-    for c in range(3):
-        background[y1:y2, x1:x2, c] = (
-            background[y1:y2, x1:x2, c] * (1 - alpha) +
-            pencil_crop[:, :, c] * alpha
-        )
-
-    return background
+# -------- Draw emoji pencil --------
+def draw_pencil_icon(img, x, y):
+    img = img.copy()
+    cv2.putText(
+        img,
+        "✏️",  # emoji
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (0, 0, 0),
+        1,
+        cv2.LINE_AA,
+    )
+    return img
 
 
 # -------- Main --------
@@ -61,29 +40,22 @@ if uploaded_file:
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # -------- BETTER EDGE DETECTION --------
+        # Better edge detection
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         edges = cv2.Canny(blur, 50, 120)
 
-        # Improve edge clarity
         edges = cv2.dilate(edges, None)
         edges = cv2.erode(edges, None)
 
-        # Get contours
         contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         contours = sorted(contours, key=lambda x: len(x), reverse=True)
 
         canvas = np.ones_like(gray) * 255
 
-        pencil = load_pencil()
-        if pencil is None:
-            st.warning("⚠️ pencil.png not found → drawing without pencil animation")
-
         frame = st.empty()
 
         st.subheader("🎬 Tracing...")
 
-        # -------- DRAWING LOOP --------
         for contour in contours:
             pts = contour.reshape(-1, 2)
 
@@ -91,21 +63,22 @@ if uploaded_file:
                 x1, y1 = pts[i - 1]
                 x2, y2 = pts[i]
 
-                # Smooth movement
                 steps = 8
 
                 for t in range(steps):
                     xi = int(x1 + (x2 - x1) * t / steps)
                     yi = int(y1 + (y2 - y1) * t / steps)
 
+                    # draw line
                     cv2.circle(canvas, (xi, yi), 1, 0, -1)
 
                     display = cv2.cvtColor(canvas.copy(), cv2.COLOR_GRAY2BGR)
-                    display = overlay_pencil(display, pencil, xi, yi)
+
+                    # draw moving icon
+                    display = draw_pencil_icon(display, xi, yi)
 
                     frame.image(display, channels="BGR")
 
-                    # Very small delay → smoother feel
                     time.sleep(0.0005)
 
         frame.image(canvas, clamp=True)
