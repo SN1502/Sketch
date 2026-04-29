@@ -2,7 +2,6 @@ import streamlit as st
 import cv2
 import numpy as np
 import time
-import urllib.request
 
 st.set_page_config(page_title="Live Pencil Sketch", layout="centered")
 
@@ -10,17 +9,22 @@ st.title("✍️ Live Pencil Sketch Animation")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
 
-# -------- Function to load pencil image from URL --------
+# -------- Load pencil safely --------
+@st.cache_resource
 def load_pencil():
-    url = "https://i.imgur.com/8zQZ7Zx.png"  # transparent pencil image
-    resp = urllib.request.urlopen(url)
-    image = np.asarray(bytearray(resp.read()), dtype="uint8")
-    pencil = cv2.imdecode(image, cv2.IMREAD_UNCHANGED)
+    pencil = cv2.imread("pencil.png", cv2.IMREAD_UNCHANGED)
+
+    if pencil is None:
+        return None
+
     pencil = cv2.resize(pencil, (40, 40))
     return pencil
 
 # -------- Overlay function --------
 def overlay_pencil(background, pencil, x, y):
+    if pencil is None:
+        return background
+
     h, w = pencil.shape[:2]
 
     y1 = max(0, y - h//2)
@@ -43,7 +47,7 @@ def overlay_pencil(background, pencil, x, y):
 
     return background
 
-# -------- Main Logic --------
+# -------- Main --------
 if uploaded_file:
 
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
@@ -57,13 +61,11 @@ if uploaded_file:
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # Pencil sketch effect
         inv = 255 - gray
         blur = cv2.GaussianBlur(inv, (21, 21), 0)
         inv_blur = 255 - blur
         sketch = cv2.divide(gray, inv_blur, scale=256.0)
 
-        # Edge detection for tracing
         edges = cv2.Canny(gray, 50, 150)
 
         contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
@@ -71,8 +73,10 @@ if uploaded_file:
 
         canvas = np.ones_like(gray) * 255
 
-        # Load pencil
         pencil = load_pencil()
+
+        if pencil is None:
+            st.warning("⚠️ pencil.png not found → drawing without pencil animation")
 
         frame = st.empty()
 
@@ -88,13 +92,10 @@ if uploaded_file:
                 x2, y2 = contour[i][0]
 
                 intensity = int(sketch[y1, x1])
-
                 cv2.line(canvas, (x1, y1), (x2, y2), intensity, thickness)
 
                 if i % speed == 0:
                     display = cv2.cvtColor(canvas.copy(), cv2.COLOR_GRAY2BGR)
-
-                    # Overlay moving pencil
                     display = overlay_pencil(display, pencil, x1, y1)
 
                     frame.image(display, channels="BGR")
