@@ -3,48 +3,53 @@ import cv2
 import numpy as np
 import time
 
-st.set_page_config(page_title="Sketch Drawer", layout="centered")
+st.set_page_config(page_title="Live Sketch", layout="centered")
 
-st.title("✍️ Sketch Drawing Animation")
-st.write("Upload an image and watch it being drawn step-by-step.")
+st.title("✍️ Live Sketch Drawing")
+st.write("Upload an image and watch it being sketched like a human drawing.")
 
-uploaded_file = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
+uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
 
-if uploaded_file is not None:
+if uploaded_file:
+
     # Read image
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
-
-    # Resize for performance
     img = cv2.resize(img, (400, 400))
 
-    # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Edge detection
-    edges = cv2.Canny(gray, 50, 150)
+    # Better edges
+    edges = cv2.Canny(gray, 80, 150)
 
-    # Extract edge points
-    points = np.column_stack(np.where(edges > 0))
+    # Find contours (continuous lines)
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
-    # Create blank white canvas
+    # Sort contours (biggest first = better drawing order)
+    contours = sorted(contours, key=lambda x: len(x), reverse=True)
+
     canvas = np.ones_like(gray) * 255
 
-    st.subheader("🎬 Drawing Animation")
     frame = st.empty()
 
-    # Speed control slider
-    speed = st.slider("Drawing Speed", 1, 50, 10)
+    speed = st.slider("Drawing Speed", 1, 20, 5)
+    thickness = st.slider("Pencil Thickness", 1, 3, 1)
 
-    # Animate drawing
-    for i in range(0, len(points), speed):
-        y, x = points[i]
-        canvas[y, x] = 0
+    st.subheader("🎬 Drawing...")
 
-        frame.image(canvas, clamp=True)
+    # Draw contour by contour (stroke effect)
+    for contour in contours:
+        for i in range(1, len(contour)):
+            x1, y1 = contour[i-1][0]
+            x2, y2 = contour[i][0]
 
-        time.sleep(0.001)
+            # draw line segment (smooth stroke)
+            cv2.line(canvas, (x1, y1), (x2, y2), 0, thickness)
 
-    # Final output
-    st.subheader("✅ Final Sketch")
-    st.image(canvas, clamp=True)
+            if i % speed == 0:
+                frame.image(canvas, clamp=True)
+                time.sleep(0.005)
+
+    frame.image(canvas, clamp=True)
+
+    st.success("✅ Sketch Completed!")
