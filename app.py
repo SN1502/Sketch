@@ -3,24 +3,23 @@ import cv2
 import numpy as np
 import time
 
-st.set_page_config(page_title="Live Pencil Sketch", layout="centered")
+st.set_page_config(page_title="Live Tracing Sketch", layout="centered")
 
-st.title("✍️ Live Pencil Sketch Animation")
+st.title("✍️ Live Pencil Tracing")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
 
-# -------- Load pencil safely --------
+
+# -------- Load pencil image --------
 @st.cache_resource
 def load_pencil():
     pencil = cv2.imread("pencil.png", cv2.IMREAD_UNCHANGED)
-
     if pencil is None:
         return None
+    return cv2.resize(pencil, (40, 40))
 
-    pencil = cv2.resize(pencil, (40, 40))
-    return pencil
 
-# -------- Overlay function --------
+# -------- Overlay pencil --------
 def overlay_pencil(background, pencil, x, y):
     if pencil is None:
         return background
@@ -47,6 +46,7 @@ def overlay_pencil(background, pencil, x, y):
 
     return background
 
+
 # -------- Main --------
 if uploaded_file:
 
@@ -61,14 +61,13 @@ if uploaded_file:
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        inv = 255 - gray
-        blur = cv2.GaussianBlur(inv, (21, 21), 0)
-        inv_blur = 255 - blur
-        sketch = cv2.divide(gray, inv_blur, scale=256.0)
+        # -------- CLEAN EDGE DETECTION --------
+        edges = cv2.Canny(gray, 120, 220)
 
-        edges = cv2.Canny(gray, 50, 150)
+        # Find contours (paths)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        # Sort large contours first
         contours = sorted(contours, key=lambda x: len(x), reverse=True)
 
         canvas = np.ones_like(gray) * 255
@@ -80,26 +79,36 @@ if uploaded_file:
 
         frame = st.empty()
 
-        speed = st.slider("Drawing Speed", 1, 20, 5)
-        thickness = st.slider("Pencil Thickness", 1, 2, 1)
+        speed = st.slider("Speed", 1, 10, 5)
 
-        st.subheader("🎬 Drawing...")
+        st.subheader("🎬 Tracing...")
 
+        # -------- DRAWING LOOP --------
         for contour in contours:
-            for i in range(1, len(contour)):
+            pts = contour.reshape(-1, 2)
 
-                x1, y1 = contour[i-1][0]
-                x2, y2 = contour[i][0]
+            for i in range(1, len(pts)):
+                x1, y1 = pts[i - 1]
+                x2, y2 = pts[i]
 
-                intensity = int(sketch[y1, x1])
-                cv2.line(canvas, (x1, y1), (x2, y2), intensity, thickness)
+                # Smooth interpolation
+                steps = 5
 
-                if i % speed == 0:
+                for t in range(steps):
+                    xi = int(x1 + (x2 - x1) * t / steps)
+                    yi = int(y1 + (y2 - y1) * t / steps)
+
+                    # draw black tracing line
+                    cv2.circle(canvas, (xi, yi), 1, 0, -1)
+
                     display = cv2.cvtColor(canvas.copy(), cv2.COLOR_GRAY2BGR)
-                    display = overlay_pencil(display, pencil, x1, y1)
+
+                    # move pencil
+                    display = overlay_pencil(display, pencil, xi, yi)
 
                     frame.image(display, channels="BGR")
-                    time.sleep(0.003)
+
+                    time.sleep(0.001 * speed)
 
         frame.image(canvas, clamp=True)
-        st.success("✅ Drawing Completed!")
+        st.success("✅ Tracing Completed!")
