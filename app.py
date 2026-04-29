@@ -79,7 +79,7 @@ if uploaded_file:
 
         frame = st.empty()
 
-        speed = st.slider("Speed", 1, 10, 9)
+        speed = st.slider("Speed", 1, 20, 29)
 
         st.subheader("🎬 Tracing...")
 
